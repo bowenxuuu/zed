@@ -6,8 +6,8 @@
     {
       "name": "Gruvbox Dark",
       "appearance": "dark",
-      "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
       "style": {
+        "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
         "border": "#5b534dff",
         "border.variant": "#494340ff",
         "border.focused": "#303a36ff",
@@ -46,6 +46,7 @@
         "tab.inactive_background": "#3a3735ff",
         "tab.active_background": "#282828ff",
         "search.match_background": "#83a59866",
+        "search.active_match_background": "#c09f3f66",
         "panel.background": "#3a3735ff",
         "panel.focused_border": "#83a598ff",
         "pane.focused_border": null,
@@ -412,8 +413,8 @@
     {
       "name": "Gruvbox Dark Hard",
       "appearance": "dark",
-      "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
       "style": {
+        "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
         "border": "#5b534dff",
         "border.variant": "#494340ff",
         "border.focused": "#303a36ff",
@@ -452,6 +453,7 @@
         "tab.inactive_background": "#393634ff",
         "tab.active_background": "#1d2021ff",
         "search.match_background": "#83a59866",
+        "search.active_match_background": "#c9653666",
         "panel.background": "#393634ff",
         "panel.focused_border": "#83a598ff",
         "pane.focused_border": null,
@@ -818,8 +820,8 @@
     {
       "name": "Gruvbox Dark Soft",
       "appearance": "dark",
-      "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
       "style": {
+        "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
         "border": "#5b534dff",
         "border.variant": "#494340ff",
         "border.focused": "#303a36ff",
@@ -858,6 +860,7 @@
         "tab.inactive_background": "#3b3735ff",
         "tab.active_background": "#32302fff",
         "search.match_background": "#83a59866",
+        "search.active_match_background": "#aea85166",
         "panel.background": "#3b3735ff",
         "panel.focused_border": null,
         "pane.focused_border": null,
@@ -1224,8 +1227,8 @@
     {
       "name": "Gruvbox Light",
       "appearance": "light",
-      "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
       "style": {
+        "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
         "border": "#c8b899ff",
         "border.variant": "#ddcca7ff",
         "border.focused": "#adc5ccff",
@@ -1264,6 +1267,7 @@
         "tab.inactive_background": "#ecddb4ff",
         "tab.active_background": "#fbf1c7ff",
         "search.match_background": "#0b667866",
+        "search.active_match_background": "#ba2d1166",
         "panel.background": "#ecddb4ff",
         "panel.focused_border": null,
         "pane.focused_border": null,
@@ -1630,8 +1634,8 @@
     {
       "name": "Gruvbox Light Hard",
       "appearance": "light",
-      "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
       "style": {
+        "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
         "border": "#c8b899ff",
         "border.variant": "#ddcca7ff",
         "border.focused": "#adc5ccff",
@@ -1670,6 +1674,7 @@
         "tab.inactive_background": "#ecddb5ff",
         "tab.active_background": "#f9f5d7ff",
         "search.match_background": "#0b667866",
+        "search.active_match_background": "#dc351466",
         "panel.background": "#ecddb5ff",
         "panel.focused_border": null,
         "pane.focused_border": null,
@@ -2036,8 +2041,8 @@
     {
       "name": "Gruvbox Light Soft",
       "appearance": "light",
-      "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
       "style": {
+        "accents": ["#cc241dff", "#98971aff", "#d79921ff", "#458588ff", "#b16286ff", "#689d6aff", "#d65d0eff"],
         "border": "#c8b899ff",
         "border.variant": "#ddcca7ff",
         "border.focused": "#adc5ccff",
@@ -2076,6 +2081,7 @@
         "tab.inactive_background": "#ecdcb3ff",
         "tab.active_background": "#f2e5bcff",
         "search.match_background": "#0b667866",
+        "search.active_match_background": "#d7331466",
         "panel.background": "#ecdcb3ff",
         "panel.focused_border": null,
         "pane.focused_border": null,

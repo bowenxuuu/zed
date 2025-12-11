@@ -38,8 +38,9 @@ use util::rel_path::RelPath;
 use workspace::searchable::Direction;
 use workspace::{Workspace, WorkspaceDb, WorkspaceId};
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Default, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Mode {
+    #[default]
     Normal,
     Insert,
     Replace,
@@ -71,12 +72,6 @@ impl Mode {
             Self::Visual | Self::VisualLine | Self::VisualBlock | Self::HelixSelect => true,
             Self::Normal | Self::Insert | Self::Replace | Self::HelixNormal => false,
         }
-    }
-}
-
-impl Default for Mode {
-    fn default() -> Self {
-        Self::Normal
     }
 }
 
@@ -222,6 +217,7 @@ pub struct VimGlobals {
     pub forced_motion: bool,
     pub stop_recording_after_next_action: bool,
     pub ignore_current_insertion: bool,
+    pub recording_count: Option<usize>,
     pub recorded_count: Option<usize>,
     pub recording_actions: Vec<ReplayableAction>,
     pub recorded_actions: Vec<ReplayableAction>,
@@ -306,8 +302,8 @@ impl MarksState {
 
     fn load(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
-            let Some(workspace_id) = this.update(cx, |this, cx| this.workspace_id(cx))? else {
-                return Ok(());
+            let Some(workspace_id) = this.update(cx, |this, cx| this.workspace_id(cx)).ok()? else {
+                return None;
             };
             let (marks, paths) = cx
                 .background_spawn(async move {
@@ -315,10 +311,12 @@ impl MarksState {
                     let paths = DB.get_global_marks_paths(workspace_id)?;
                     anyhow::Ok((marks, paths))
                 })
-                .await?;
+                .await
+                .log_err()?;
             this.update(cx, |this, cx| this.loaded(marks, paths, cx))
+                .ok()
         })
-        .detach_and_log_err(cx);
+        .detach();
     }
 
     fn loaded(
@@ -608,7 +606,7 @@ impl MarksState {
                 let text_anchors = anchors.get(name)?;
                 let anchors = text_anchors
                     .iter()
-                    .map(|anchor| Anchor::in_buffer(excerpt_id, buffer_id, *anchor))
+                    .map(|anchor| Anchor::in_buffer(excerpt_id, *anchor))
                     .collect();
                 return Some(Mark::Local(anchors));
             }
@@ -901,6 +899,7 @@ impl VimGlobals {
             if self.stop_recording_after_next_action {
                 self.dot_recording = false;
                 self.recorded_actions = std::mem::take(&mut self.recording_actions);
+                self.recorded_count = self.recording_count.take();
                 self.stop_recording_after_next_action = false;
             }
         }
@@ -927,6 +926,7 @@ impl VimGlobals {
             if self.stop_recording_after_next_action {
                 self.dot_recording = false;
                 self.recorded_actions = std::mem::take(&mut self.recording_actions);
+                self.recorded_count = self.recording_count.take();
                 self.stop_recording_after_next_action = false;
             }
         }

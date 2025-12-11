@@ -161,6 +161,42 @@ async fn test_system_prompt(cx: &mut TestAppContext) {
 }
 
 #[gpui::test]
+async fn test_system_prompt_without_tools(cx: &mut TestAppContext) {
+    let ThreadTest { model, thread, .. } = setup(cx, TestModel::Fake).await;
+    let fake_model = model.as_fake();
+
+    thread
+        .update(cx, |thread, cx| {
+            thread.send(UserMessageId::new(), ["abc"], cx)
+        })
+        .unwrap();
+    cx.run_until_parked();
+    let mut pending_completions = fake_model.pending_completions();
+    assert_eq!(
+        pending_completions.len(),
+        1,
+        "unexpected pending completions: {:?}",
+        pending_completions
+    );
+
+    let pending_completion = pending_completions.pop().unwrap();
+    assert_eq!(pending_completion.messages[0].role, Role::System);
+
+    let system_message = &pending_completion.messages[0];
+    let system_prompt = system_message.content[0].to_str().unwrap();
+    assert!(
+        !system_prompt.contains("## Tool Use"),
+        "unexpected system message: {:?}",
+        system_message
+    );
+    assert!(
+        !system_prompt.contains("## Fixing Diagnostics"),
+        "unexpected system message: {:?}",
+        system_message
+    );
+}
+
+#[gpui::test]
 async fn test_prompt_caching(cx: &mut TestAppContext) {
     let ThreadTest { model, thread, .. } = setup(cx, TestModel::Fake).await;
     let fake_model = model.as_fake();
@@ -179,7 +215,8 @@ async fn test_prompt_caching(cx: &mut TestAppContext) {
         vec![LanguageModelRequestMessage {
             role: Role::User,
             content: vec!["Message 1".into()],
-            cache: true
+            cache: true,
+            reasoning_details: None,
         }]
     );
     fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::Text(
@@ -203,17 +240,20 @@ async fn test_prompt_caching(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Message 1".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec!["Response to Message 1".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Message 2".into()],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             }
         ]
     );
@@ -238,6 +278,7 @@ async fn test_prompt_caching(cx: &mut TestAppContext) {
         raw_input: json!({"text": "test"}).to_string(),
         input: json!({"text": "test"}),
         is_input_complete: true,
+        thought_signature: None,
     };
     fake_model
         .send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(tool_use.clone()));
@@ -258,37 +299,44 @@ async fn test_prompt_caching(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Message 1".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec!["Response to Message 1".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Message 2".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec!["Response to Message 2".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Use the echo tool".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec![MessageContent::ToolUse(tool_use)],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec![MessageContent::ToolResult(tool_result)],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             }
         ]
     );
@@ -425,6 +473,7 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
             raw_input: "{}".into(),
             input: json!({}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(
@@ -434,6 +483,7 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
             raw_input: "{}".into(),
             input: json!({}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -443,14 +493,14 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
     // Approve the first
     tool_call_auth_1
         .response
-        .send(tool_call_auth_1.options[1].id.clone())
+        .send(tool_call_auth_1.options[1].option_id.clone())
         .unwrap();
     cx.run_until_parked();
 
     // Reject the second
     tool_call_auth_2
         .response
-        .send(tool_call_auth_1.options[2].id.clone())
+        .send(tool_call_auth_1.options[2].option_id.clone())
         .unwrap();
     cx.run_until_parked();
 
@@ -460,14 +510,14 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
         message.content,
         vec![
             language_model::MessageContent::ToolResult(LanguageModelToolResult {
-                tool_use_id: tool_call_auth_1.tool_call.id.0.to_string().into(),
+                tool_use_id: tool_call_auth_1.tool_call.tool_call_id.0.to_string().into(),
                 tool_name: ToolRequiringPermission::name().into(),
                 is_error: false,
                 content: "Allowed".into(),
                 output: Some("Allowed".into())
             }),
             language_model::MessageContent::ToolResult(LanguageModelToolResult {
-                tool_use_id: tool_call_auth_2.tool_call.id.0.to_string().into(),
+                tool_use_id: tool_call_auth_2.tool_call.tool_call_id.0.to_string().into(),
                 tool_name: ToolRequiringPermission::name().into(),
                 is_error: true,
                 content: "Permission to run tool denied by user".into(),
@@ -484,6 +534,7 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
             raw_input: "{}".into(),
             input: json!({}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -492,7 +543,7 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
     let tool_call_auth_3 = next_tool_call_authorization(&mut events).await;
     tool_call_auth_3
         .response
-        .send(tool_call_auth_3.options[0].id.clone())
+        .send(tool_call_auth_3.options[0].option_id.clone())
         .unwrap();
     cx.run_until_parked();
     let completion = fake_model.pending_completions().pop().unwrap();
@@ -501,7 +552,7 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
         message.content,
         vec![language_model::MessageContent::ToolResult(
             LanguageModelToolResult {
-                tool_use_id: tool_call_auth_3.tool_call.id.0.to_string().into(),
+                tool_use_id: tool_call_auth_3.tool_call.tool_call_id.0.to_string().into(),
                 tool_name: ToolRequiringPermission::name().into(),
                 is_error: false,
                 content: "Allowed".into(),
@@ -518,6 +569,7 @@ async fn test_tool_authorization(cx: &mut TestAppContext) {
             raw_input: "{}".into(),
             input: json!({}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -556,6 +608,7 @@ async fn test_tool_hallucination(cx: &mut TestAppContext) {
             raw_input: "{}".into(),
             input: json!({}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -585,6 +638,7 @@ async fn test_resume_after_tool_use_limit(cx: &mut TestAppContext) {
         raw_input: "{}".into(),
         input: serde_json::to_value(&EchoToolInput { text: "def".into() }).unwrap(),
         is_input_complete: true,
+        thought_signature: None,
     };
     fake_model
         .send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(tool_use.clone()));
@@ -605,25 +659,26 @@ async fn test_resume_after_tool_use_limit(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["abc".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec![MessageContent::ToolUse(tool_use.clone())],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec![MessageContent::ToolResult(tool_result.clone())],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             },
         ]
     );
 
     // Simulate reaching tool use limit.
-    fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::StatusUpdate(
-        cloud_llm_client::CompletionRequestStatus::ToolUseLimitReached,
-    ));
+    fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUseLimitReached);
     fake_model.end_last_completion_stream();
     let last_event = events.collect::<Vec<_>>().await.pop().unwrap();
     assert!(
@@ -641,22 +696,26 @@ async fn test_resume_after_tool_use_limit(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["abc".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec![MessageContent::ToolUse(tool_use)],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec![MessageContent::ToolResult(tool_result)],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Continue where you left off".into()],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             }
         ]
     );
@@ -695,6 +754,7 @@ async fn test_send_after_tool_use_limit(cx: &mut TestAppContext) {
         raw_input: "{}".into(),
         input: serde_json::to_value(&EchoToolInput { text: "def".into() }).unwrap(),
         is_input_complete: true,
+        thought_signature: None,
     };
     let tool_result = LanguageModelToolResult {
         tool_use_id: "tool_id_1".into(),
@@ -705,9 +765,7 @@ async fn test_send_after_tool_use_limit(cx: &mut TestAppContext) {
     };
     fake_model
         .send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(tool_use.clone()));
-    fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::StatusUpdate(
-        cloud_llm_client::CompletionRequestStatus::ToolUseLimitReached,
-    ));
+    fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUseLimitReached);
     fake_model.end_last_completion_stream();
     let last_event = events.collect::<Vec<_>>().await.pop().unwrap();
     assert!(
@@ -729,22 +787,26 @@ async fn test_send_after_tool_use_limit(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["abc".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec![MessageContent::ToolUse(tool_use)],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec![MessageContent::ToolResult(tool_result)],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["ghi".into()],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             }
         ]
     );
@@ -897,7 +959,7 @@ async fn test_profiles(cx: &mut TestAppContext) {
     // Test that test-1 profile (default) has echo and delay tools
     thread
         .update(cx, |thread, cx| {
-            thread.set_profile(AgentProfileId("test-1".into()));
+            thread.set_profile(AgentProfileId("test-1".into()), cx);
             thread.send(UserMessageId::new(), ["test"], cx)
         })
         .unwrap();
@@ -917,7 +979,7 @@ async fn test_profiles(cx: &mut TestAppContext) {
     // Switch to test-2 profile, and verify that it has only the infinite tool.
     thread
         .update(cx, |thread, cx| {
-            thread.set_profile(AgentProfileId("test-2".into()));
+            thread.set_profile(AgentProfileId("test-2".into()), cx);
             thread.send(UserMessageId::new(), ["test2"], cx)
         })
         .unwrap();
@@ -966,8 +1028,8 @@ async fn test_mcp_tools(cx: &mut TestAppContext) {
     )
     .await;
     cx.run_until_parked();
-    thread.update(cx, |thread, _| {
-        thread.set_profile(AgentProfileId("test".into()))
+    thread.update(cx, |thread, cx| {
+        thread.set_profile(AgentProfileId("test".into()), cx)
     });
 
     let mut mcp_tool_calls = setup_context_server(
@@ -1001,6 +1063,7 @@ async fn test_mcp_tools(cx: &mut TestAppContext) {
             raw_input: json!({"text": "test"}).to_string(),
             input: json!({"text": "test"}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -1044,6 +1107,7 @@ async fn test_mcp_tools(cx: &mut TestAppContext) {
             raw_input: json!({"text": "mcp"}).to_string(),
             input: json!({"text": "mcp"}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(
@@ -1053,6 +1117,7 @@ async fn test_mcp_tools(cx: &mut TestAppContext) {
             raw_input: json!({"text": "native"}).to_string(),
             input: json!({"text": "native"}),
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -1133,8 +1198,8 @@ async fn test_mcp_tool_truncation(cx: &mut TestAppContext) {
     .await;
     cx.run_until_parked();
 
-    thread.update(cx, |thread, _| {
-        thread.set_profile(AgentProfileId("test".into()));
+    thread.update(cx, |thread, cx| {
+        thread.set_profile(AgentProfileId("test".into()), cx);
         thread.add_tool(EchoTool);
         thread.add_tool(DelayTool);
         thread.add_tool(WordListTool);
@@ -1288,20 +1353,20 @@ async fn test_cancellation(cx: &mut TestAppContext) {
             ThreadEvent::ToolCall(tool_call) => {
                 assert_eq!(tool_call.title, expected_tools.remove(0));
                 if tool_call.title == "Echo" {
-                    echo_id = Some(tool_call.id);
+                    echo_id = Some(tool_call.tool_call_id);
                 }
             }
             ThreadEvent::ToolCallUpdate(acp_thread::ToolCallUpdate::UpdateFields(
                 acp::ToolCallUpdate {
-                    id,
+                    tool_call_id,
                     fields:
                         acp::ToolCallUpdateFields {
                             status: Some(acp::ToolCallStatus::Completed),
                             ..
                         },
-                    meta: None,
+                    ..
                 },
-            )) if Some(&id) == echo_id.as_ref() => {
+            )) if Some(&tool_call_id) == echo_id.as_ref() => {
                 echo_completed = true;
             }
             _ => {}
@@ -1752,6 +1817,7 @@ async fn test_building_request_with_pending_tools(cx: &mut TestAppContext) {
         raw_input: "{}".into(),
         input: json!({}),
         is_input_complete: true,
+        thought_signature: None,
     };
     let echo_tool_use = LanguageModelToolUse {
         id: "tool_id_2".into(),
@@ -1759,6 +1825,7 @@ async fn test_building_request_with_pending_tools(cx: &mut TestAppContext) {
         raw_input: json!({"text": "test"}).to_string(),
         input: json!({"text": "test"}),
         is_input_complete: true,
+        thought_signature: None,
     };
     fake_model.send_last_completion_stream_text_chunk("Hi!");
     fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(
@@ -1782,7 +1849,8 @@ async fn test_building_request_with_pending_tools(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Hey!".into()],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
@@ -1790,7 +1858,8 @@ async fn test_building_request_with_pending_tools(cx: &mut TestAppContext) {
                     MessageContent::Text("Hi!".into()),
                     MessageContent::ToolUse(echo_tool_use.clone())
                 ],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
@@ -1801,7 +1870,8 @@ async fn test_building_request_with_pending_tools(cx: &mut TestAppContext) {
                     content: "test".into(),
                     output: Some("test".into())
                 })],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
         ],
     );
@@ -1815,7 +1885,6 @@ async fn test_agent_connection(cx: &mut TestAppContext) {
     // Initialize language model system with test provider
     cx.update(|cx| {
         gpui_tokio::init(cx);
-        client::init_settings(cx);
 
         let http_client = FakeHttpClient::with_404_response();
         let clock = Arc::new(clock::FakeSystemClock::new());
@@ -1823,9 +1892,7 @@ async fn test_agent_connection(cx: &mut TestAppContext) {
         let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
         language_model::init(client.clone(), cx);
         language_models::init(user_store, client.clone(), cx);
-        Project::init_settings(cx);
         LanguageModelRegistry::test(cx);
-        agent_settings::init(cx);
     });
     cx.executor().forbid_parking();
 
@@ -1928,11 +1995,7 @@ async fn test_agent_connection(cx: &mut TestAppContext) {
         .update(|cx| {
             connection.prompt(
                 Some(acp_thread::UserMessageId::new()),
-                acp::PromptRequest {
-                    session_id: session_id.clone(),
-                    prompt: vec!["ghi".into()],
-                    meta: None,
-                },
+                acp::PromptRequest::new(session_id.clone(), vec!["ghi".into()]),
                 cx,
             )
         })
@@ -1967,6 +2030,7 @@ async fn test_tool_updates_to_completion(cx: &mut TestAppContext) {
             raw_input: input.to_string(),
             input,
             is_input_complete: false,
+            thought_signature: None,
         },
     ));
 
@@ -1979,6 +2043,7 @@ async fn test_tool_updates_to_completion(cx: &mut TestAppContext) {
             raw_input: input.to_string(),
             input,
             is_input_complete: true,
+            thought_signature: None,
         },
     ));
     fake_model.end_last_completion_stream();
@@ -1987,68 +2052,50 @@ async fn test_tool_updates_to_completion(cx: &mut TestAppContext) {
     let tool_call = expect_tool_call(&mut events).await;
     assert_eq!(
         tool_call,
-        acp::ToolCall {
-            id: acp::ToolCallId("1".into()),
-            title: "Thinking".into(),
-            kind: acp::ToolKind::Think,
-            status: acp::ToolCallStatus::Pending,
-            content: vec![],
-            locations: vec![],
-            raw_input: Some(json!({})),
-            raw_output: None,
-            meta: Some(json!({ "tool_name": "thinking" })),
-        }
+        acp::ToolCall::new("1", "Thinking")
+            .kind(acp::ToolKind::Think)
+            .raw_input(json!({}))
+            .meta(acp::Meta::from_iter([(
+                "tool_name".into(),
+                "thinking".into()
+            )]))
     );
     let update = expect_tool_call_update_fields(&mut events).await;
     assert_eq!(
         update,
-        acp::ToolCallUpdate {
-            id: acp::ToolCallId("1".into()),
-            fields: acp::ToolCallUpdateFields {
-                title: Some("Thinking".into()),
-                kind: Some(acp::ToolKind::Think),
-                raw_input: Some(json!({ "content": "Thinking hard!" })),
-                ..Default::default()
-            },
-            meta: None,
-        }
+        acp::ToolCallUpdate::new(
+            "1",
+            acp::ToolCallUpdateFields::new()
+                .title("Thinking")
+                .kind(acp::ToolKind::Think)
+                .raw_input(json!({ "content": "Thinking hard!"}))
+        )
     );
     let update = expect_tool_call_update_fields(&mut events).await;
     assert_eq!(
         update,
-        acp::ToolCallUpdate {
-            id: acp::ToolCallId("1".into()),
-            fields: acp::ToolCallUpdateFields {
-                status: Some(acp::ToolCallStatus::InProgress),
-                ..Default::default()
-            },
-            meta: None,
-        }
+        acp::ToolCallUpdate::new(
+            "1",
+            acp::ToolCallUpdateFields::new().status(acp::ToolCallStatus::InProgress)
+        )
     );
     let update = expect_tool_call_update_fields(&mut events).await;
     assert_eq!(
         update,
-        acp::ToolCallUpdate {
-            id: acp::ToolCallId("1".into()),
-            fields: acp::ToolCallUpdateFields {
-                content: Some(vec!["Thinking hard!".into()]),
-                ..Default::default()
-            },
-            meta: None,
-        }
+        acp::ToolCallUpdate::new(
+            "1",
+            acp::ToolCallUpdateFields::new().content(vec!["Thinking hard!".into()])
+        )
     );
     let update = expect_tool_call_update_fields(&mut events).await;
     assert_eq!(
         update,
-        acp::ToolCallUpdate {
-            id: acp::ToolCallId("1".into()),
-            fields: acp::ToolCallUpdateFields {
-                status: Some(acp::ToolCallStatus::Completed),
-                raw_output: Some("Finished thinking.".into()),
-                ..Default::default()
-            },
-            meta: None,
-        }
+        acp::ToolCallUpdate::new(
+            "1",
+            acp::ToolCallUpdateFields::new()
+                .status(acp::ToolCallStatus::Completed)
+                .raw_output("Finished thinking.")
+        )
     );
 }
 
@@ -2181,6 +2228,7 @@ async fn test_send_retry_finishes_tool_calls_on_error(cx: &mut TestAppContext) {
         raw_input: json!({"text": "test"}).to_string(),
         input: json!({"text": "test"}),
         is_input_complete: true,
+        thought_signature: None,
     };
     fake_model.send_last_completion_stream_event(LanguageModelCompletionEvent::ToolUse(
         tool_use_1.clone(),
@@ -2199,12 +2247,14 @@ async fn test_send_retry_finishes_tool_calls_on_error(cx: &mut TestAppContext) {
             LanguageModelRequestMessage {
                 role: Role::User,
                 content: vec!["Call the echo tool!".into()],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::Assistant,
                 content: vec![language_model::MessageContent::ToolUse(tool_use_1.clone())],
-                cache: false
+                cache: false,
+                reasoning_details: None,
             },
             LanguageModelRequestMessage {
                 role: Role::User,
@@ -2217,7 +2267,8 @@ async fn test_send_retry_finishes_tool_calls_on_error(cx: &mut TestAppContext) {
                         output: Some("test".into())
                     }
                 )],
-                cache: true
+                cache: true,
+                reasoning_details: None,
             },
         ]
     );
@@ -2231,7 +2282,8 @@ async fn test_send_retry_finishes_tool_calls_on_error(cx: &mut TestAppContext) {
             thread.last_message(),
             Some(Message::Agent(AgentMessage {
                 content: vec![AgentMessageContent::Text("Done".into())],
-                tool_results: IndexMap::default()
+                tool_results: IndexMap::default(),
+                reasoning_details: None,
             }))
         );
     })
@@ -2359,8 +2411,6 @@ async fn setup(cx: &mut TestAppContext, model: TestModel) -> ThreadTest {
 
     cx.update(|cx| {
         settings::init(cx);
-        Project::init_settings(cx);
-        agent_settings::init(cx);
 
         match model {
             TestModel::Fake => {}
@@ -2368,7 +2418,6 @@ async fn setup(cx: &mut TestAppContext, model: TestModel) -> ThreadTest {
                 gpui_tokio::init(cx);
                 let http_client = ReqwestClient::user_agent("agent tests").unwrap();
                 cx.set_http_client(Arc::new(http_client));
-                client::init_settings(cx);
                 let client = Client::production(cx);
                 let user_store = cx.new(|cx| UserStore::new(client.clone(), cx));
                 language_model::init(client.clone(), cx);
@@ -2482,7 +2531,7 @@ fn setup_context_server(
         let mut settings = ProjectSettings::get_global(cx).clone();
         settings.context_servers.insert(
             name.into(),
-            project::project_settings::ContextServerSettings::Custom {
+            project::project_settings::ContextServerSettings::Stdio {
                 enabled: true,
                 command: ContextServerCommand {
                     path: "somebinary".into(),

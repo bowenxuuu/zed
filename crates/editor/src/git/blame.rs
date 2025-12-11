@@ -1,6 +1,7 @@
 use crate::Editor;
 use anyhow::Result;
 use collections::HashMap;
+use futures::StreamExt;
 use git::{
     GitHostingProviderRegistry, GitRemote, Oid,
     blame::{Blame, BlameEntry, ParsedCommitMessage},
@@ -66,7 +67,7 @@ impl<'a> sum_tree::Dimension<'a, GitBlameEntrySummary> for u32 {
 struct GitBlameBuffer {
     entries: SumTree<GitBlameEntry>,
     buffer_snapshot: BufferSnapshot,
-    buffer_edits: text::Subscription,
+    buffer_edits: text::Subscription<usize>,
     commit_details: HashMap<Oid, ParsedCommitMessage>,
 }
 
@@ -507,7 +508,19 @@ impl GitBlame {
                     let buffer_edits = buffer.update(cx, |buffer, _| buffer.subscribe());
 
                     let blame_buffer = project.blame_buffer(&buffer, None, cx);
-                    Some((id, snapshot, buffer_edits, blame_buffer))
+                    let remote_url = project
+                        .git_store()
+                        .read(cx)
+                        .repository_and_path_for_buffer_id(buffer.read(cx).remote_id(), cx)
+                        .and_then(|(repo, _)| {
+                            repo.read(cx)
+                                .remote_upstream_url
+                                .clone()
+                                .or(repo.read(cx).remote_origin_url.clone())
+                        });
+                    Some(
+                        async move { (id, snapshot, buffer_edits, blame_buffer.await, remote_url) },
+                    )
                 })
                 .collect::<Vec<_>>()
         });
@@ -517,15 +530,15 @@ impl GitBlame {
             let (result, errors) = cx
                 .background_spawn({
                     async move {
+                        let blame = futures::stream::iter(blame)
+                            .buffered(4)
+                            .collect::<Vec<_>>()
+                            .await;
                         let mut res = vec![];
                         let mut errors = vec![];
-                        for (id, snapshot, buffer_edits, blame) in blame {
-                            match blame.await {
-                                Ok(Some(Blame {
-                                    entries,
-                                    messages,
-                                    remote_url,
-                                })) => {
+                        for (id, snapshot, buffer_edits, blame, remote_url) in blame {
+                            match blame {
+                                Ok(Some(Blame { entries, messages })) => {
                                     let entries = build_blame_entry_sum_tree(
                                         entries,
                                         snapshot.max_point().row,
@@ -597,6 +610,7 @@ impl GitBlame {
     }
 
     fn regenerate_on_edit(&mut self, cx: &mut Context<Self>) {
+        // todo(lw): hot foreground spawn
         self.regenerate_on_edit_task = cx.spawn(async move |this, cx| {
             cx.background_executor()
                 .timer(REGENERATE_ON_EDIT_DEBOUNCE_INTERVAL)
@@ -757,11 +771,6 @@ mod tests {
             cx.set_global(settings);
 
             theme::init(theme::LoadThemes::JustBase, cx);
-
-            language::init(cx);
-            client::init_settings(cx);
-            workspace::init_settings(cx);
-            Project::init_settings(cx);
 
             crate::init(cx);
         });
