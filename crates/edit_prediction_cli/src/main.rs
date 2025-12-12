@@ -1,4 +1,5 @@
 mod anthropic_client;
+mod distill;
 mod example;
 mod format_prompt;
 mod headless;
@@ -16,6 +17,7 @@ use reqwest_client::ReqwestClient;
 use serde::{Deserialize, Serialize};
 use std::{path::PathBuf, sync::Arc};
 
+use crate::distill::run_distill;
 use crate::example::{read_examples, write_examples};
 use crate::format_prompt::run_format_prompt;
 use crate::load_project::run_load_project;
@@ -45,7 +47,7 @@ enum Command {
     /// Parse markdown examples and output a combined .jsonl file
     ParseExample,
     /// Create git worktrees for each example and load file contents
-    LoadBuffer,
+    LoadProject,
     /// Retrieve context for input examples.
     Context,
     /// Generate a prompt string for a specific model
@@ -54,6 +56,9 @@ enum Command {
     Predict(PredictArgs),
     /// Computes a score based on actual and expected patches
     Score(PredictArgs),
+    /// Prepares a distillation dataset by copying expected outputs to
+    /// predicted outputs and removing actual outputs and prompts.
+    Distill,
     /// Print aggregated scores
     Eval(PredictArgs),
     /// Remove git repositories and worktrees
@@ -87,6 +92,7 @@ enum PredictionProvider {
     Zeta1,
     Zeta2,
     Teacher,
+    TeacherNonBatching,
 }
 
 impl EpArgs {
@@ -144,15 +150,19 @@ fn main() {
                 _ => (),
             };
 
-            for data in examples.chunks_mut(args.max_parallelism) {
+            let chunks = examples.chunks_mut(args.max_parallelism);
+            let total_chunks = chunks.len();
+            for (batch_ix, data) in chunks.enumerate() {
                 let mut futures = Vec::new();
+                eprintln!("Processing batch: {}/{}", batch_ix + 1, total_chunks);
+
                 for example in data.iter_mut() {
                     let cx = cx.clone();
                     let app_state = app_state.clone();
                     futures.push(async {
                         match &command {
                             Command::ParseExample => {}
-                            Command::LoadBuffer => {
+                            Command::LoadProject => {
                                 run_load_project(example, app_state.clone(), cx).await;
                             }
                             Command::Context => {
@@ -170,6 +180,9 @@ fn main() {
                                     cx,
                                 )
                                 .await;
+                            }
+                            Command::Distill => {
+                                run_distill(example).await;
                             }
                             Command::Score(args) | Command::Eval(args) => {
                                 run_scoring(example, &args, app_state, cx).await;
