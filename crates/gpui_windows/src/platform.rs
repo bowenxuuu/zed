@@ -467,19 +467,25 @@ impl Platform for WindowsPlatform {
     }
 
     fn activate(&self, _ignoring_other_apps: bool) {
-        unsafe {
-            self.raw_window_handles
-                .read()
-                .iter().for_each(|hwnd| {let _ = ShowWindow(hwnd.as_raw(), SW_SHOW);});
-        }
+        self.raw_window_handles
+            .read()
+            .iter()
+            .for_each(|hwnd|
+                unsafe {
+                    ShowWindow(hwnd.as_raw(), SW_SHOW).ok().log_err();
+                }
+            );
     }
 
     fn hide(&self) {
-        unsafe {
-            self.raw_window_handles
-                .read()
-                .iter().for_each(|hwnd| {let _ = ShowWindow(hwnd.as_raw(), SW_HIDE);});
-        }
+        self.raw_window_handles
+            .read()
+            .iter()
+            .for_each(|hwnd|
+                unsafe {
+                    ShowWindow(hwnd.as_raw(), SW_HIDE).ok().log_err();
+                }
+            );
     }
 
     // todo(windows)
